@@ -1,294 +1,327 @@
-#!/usr/bin/env python3
 """
-DY策略选股器 - 核心类
-实现完整的技术指标计算和信号判断逻辑
+DY 指标选股器 - 基于 TradingView Pine Script 逻辑
+实现蓝黄带趋势判断和 MACD 背离信号
 """
 
 import pandas as pd
 import numpy as np
+from typing import Dict, List, Tuple
 import yfinance as yf
-from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import warnings
 warnings.filterwarnings('ignore')
 
 
 class DYScreener:
-    """DY策略选股器核心类"""
-    
-    def __init__(self):
-        self.qualified_stocks = []
-        
-    def get_stock_data(self, symbol, period='1y'):
-        """获取股票数据"""
-        try:
-            stock = yf.Ticker(symbol)
-            df = stock.history(period=period)
-            
-            if df is None or len(df) < 100:
-                return None
-            
-            df = df.reset_index()
-            df.columns = [col.lower() for col in df.columns]
-            
-            return df
-        except:
-            return None
-    
-    def calculate_ema(self, series, period):
-        """计算EMA"""
-        return series.ewm(span=period, adjust=False).mean()
-    
-    def calculate_macd(self, close, short=12, long=26, signal=9):
-        """计算MACD"""
-        fast_ma = self.calculate_ema(close, short)
-        slow_ma = self.calculate_ema(close, long)
-        diff = fast_ma - slow_ma
-        dea = self.calculate_ema(diff, signal)
-        macd = (diff - dea) * 2
-        return diff, dea, macd
-    
-    def bars_since_condition(self, condition_series):
-        """计算自上次条件为True以来的K线数"""
-        result = []
-        bars_count = 0
-        found_first = False
-        
-        for val in condition_series:
-            if pd.isna(val):
-                result.append(np.nan)
-                continue
-                
-            if val:
-                result.append(0)
-                bars_count = 0
-                found_first = True
+    """DY 指标选股器"""
+
+    def __init__(self, min_price: float = 0.1, min_volume_usd: float = 10_000_000):
+        """
+        初始化选股器
+
+        Args:
+            min_price: 最低价格（美元）
+            min_volume_usd: 最低交易额（美元）
+        """
+        self.min_price = min_price
+        self.min_volume_usd = min_volume_usd
+
+    def calculate_ema(self, data: pd.Series, period: int) -> pd.Series:
+        """计算 EMA"""
+        return data.ewm(span=period, adjust=False).mean()
+
+    def calculate_bands(self, df: pd.DataFrame) -> pd.DataFrame:
+        """计算蓝带和黄带"""
+        df['blue_top'] = self.calculate_ema(df['High'], 24)
+        df['blue_bottom'] = self.calculate_ema(df['Low'], 23)
+        df['yellow_top'] = self.calculate_ema(df['High'], 89)
+        df['yellow_bottom'] = self.calculate_ema(df['Low'], 90)
+        return df
+
+    def calculate_macd(self, df: pd.DataFrame, short: int = 12, long: int = 26, signal: int = 9) -> pd.DataFrame:
+        """计算 MACD"""
+        fast_ma = self.calculate_ema(df['Close'], short)
+        slow_ma = self.calculate_ema(df['Close'], long)
+        df['DIFF'] = fast_ma - slow_ma
+        df['DEA'] = self.calculate_ema(df['DIFF'], signal)
+        df['MACD'] = (df['DIFF'] - df['DEA']) * 2
+        return df
+
+    def bars_since(self, condition: pd.Series) -> pd.Series:
+        """计算自上次条件为真以来的 bar 数"""
+        result = pd.Series(index=condition.index, dtype=float)
+        last_true = -1
+        for i in range(len(condition)):
+            if condition.iloc[i]:
+                last_true = i
+            if last_true >= 0:
+                result.iloc[i] = i - last_true
             else:
-                if found_first:
-                    bars_count += 1
-                    result.append(bars_count)
-                else:
-                    result.append(np.nan)
-        
-        return pd.Series(result, index=condition_series.index)
-    
-    def rolling_min_with_dynamic_window(self, series, window_series, default_window=1):
-        """动态窗口的rolling min"""
-        result = []
-        for i in range(len(series)):
-            window = int(window_series.iloc[i]) if not pd.isna(window_series.iloc[i]) else default_window
-            window = max(1, min(window, i + 1))
-            start_idx = max(0, i - window + 1)
-            result.append(series.iloc[start_idx:i+1].min())
-        return pd.Series(result, index=series.index)
-    
-    def rolling_max_with_dynamic_window(self, series, window_series, default_window=1):
-        """动态窗口的rolling max"""
-        result = []
-        for i in range(len(series)):
-            window = int(window_series.iloc[i]) if not pd.isna(window_series.iloc[i]) else default_window
-            window = max(1, min(window, i + 1))
-            start_idx = max(0, i - window + 1)
-            result.append(series.iloc[start_idx:i+1].max())
-        return pd.Series(result, index=series.index)
-    
-    def shift_by_series(self, series, shift_series, default_shift=1):
-        """根据shift_series中的值动态shift"""
-        result = []
-        for i in range(len(series)):
-            shift_val = int(shift_series.iloc[i]) if not pd.isna(shift_series.iloc[i]) else default_shift
-            shift_val = max(0, shift_val)
-            target_idx = i - shift_val
-            if target_idx >= 0:
-                result.append(series.iloc[target_idx])
-            else:
-                result.append(np.nan)
-        return pd.Series(result, index=series.index)
-    
-    def calculate_trend_signals(self, df):
-        """计算趋势信号（蓝黄带）"""
-        high = df['high']
-        low = df['low']
-        close = df['close']
-        
-        # 蓝带和黄带
-        blue_top = self.calculate_ema(high, 24)
-        blue_bottom = self.calculate_ema(low, 23)
-        yellow_top = self.calculate_ema(high, 89)
-        yellow_bottom = self.calculate_ema(low, 90)
-        
-        # 趋势信号
-        up1 = (close > blue_top) & (close.shift(1) < blue_top.shift(1))
-        up2 = (close > yellow_top) & (close.shift(1) < yellow_top.shift(1))
-        up3 = (blue_bottom > yellow_top) & (blue_bottom.shift(1) < yellow_top.shift(1))
-        
-        down1 = (close < blue_bottom) & (close.shift(1) > blue_bottom.shift(1))
-        down2 = (close < yellow_bottom) & (close.shift(1) > yellow_bottom.shift(1))
-        down3 = (blue_bottom < yellow_bottom) & (blue_bottom.shift(1) > yellow_bottom.shift(1))
-        
-        return up1, up2, up3, down1, down2, down3
-    
-    def calculate_divergence_signals(self, df):
-        """计算背离信号（底背离LLL和顶背离DBL）"""
-        close = df['close']
-        
-        # MACD
-        diff, dea, macd = self.calculate_macd(close)
-        
-        # N1和MM1
-        macd_cross_down = (macd.shift(1) >= 0) & (macd < 0)
-        macd_cross_up = (macd.shift(1) <= 0) & (macd > 0)
-        
-        n1 = self.bars_since_condition(macd_cross_down).fillna(1)
-        mm1 = self.bars_since_condition(macd_cross_up).fillna(1)
-        
-        # 底背离计算
-        cc1 = self.rolling_min_with_dynamic_window(close, n1 + 1)
-        cc2 = self.shift_by_series(cc1, mm1 + 1)
-        cc3 = self.shift_by_series(cc2, mm1 + 1)
-        
-        difl1 = self.rolling_min_with_dynamic_window(diff, n1 + 1)
-        difl2 = self.shift_by_series(difl1, mm1 + 1)
-        difl3 = self.shift_by_series(difl2, mm1 + 1)
-        
-        aaa = (cc1 < cc2) & (difl1 > difl2) & (macd.shift(1) < 0) & (diff < 0)
-        bbb = (cc1 < cc3) & (difl1 < difl2) & (difl1 > difl3) & (macd.shift(1) < 0) & (diff < 0)
-        ccc = (aaa | bbb) & (diff < 0)
-        
-        lll = (~ccc.shift(1).fillna(False)) & ccc  # 底背离信号
-        
-        # 顶背离计算
-        ch1 = self.rolling_max_with_dynamic_window(close, mm1 + 1)
-        ch2 = self.shift_by_series(ch1, n1 + 1)
-        ch3 = self.shift_by_series(ch2, n1 + 1)
-        
-        difh1 = self.rolling_max_with_dynamic_window(diff, mm1 + 1)
-        difh2 = self.shift_by_series(difh1, n1 + 1)
-        difh3 = self.shift_by_series(difh2, n1 + 1)
-        
-        zjdbl = (ch1 > ch2) & (difh1 < difh2) & (macd.shift(1) > 0) & (diff > 0)
-        gxdbl = (ch1 > ch3) & (difh1 > difh2) & (difh1 < difh3) & (macd.shift(1) > 0) & (diff > 0)
-        dbbl = (zjdbl | gxdbl) & (diff > 0)
-        
-        dbl = (~dbbl.shift(1).fillna(False)) & dbbl & (diff > dea)  # 顶背离信号
-        
-        # MACD金叉死叉
-        diff_cross_up = (diff > dea) & (diff.shift(1) <= dea.shift(1))
-        diff_cross_down = (diff < dea) & (diff.shift(1) >= dea.shift(1))
-        
-        return lll, dbl, diff, dea, diff_cross_up, diff_cross_down
-    
-    def filter_stock(self, symbol, min_price=0.10, min_volume_usd=10_000_000):
-        """第一轮过滤：价格和成交额"""
-        try:
-            df = self.get_stock_data(symbol)
-            if df is None or len(df) < 100:
-                return False, None
-            
-            last_close = df['close'].iloc[-1]
-            last_volume = df['volume'].iloc[-1]
-            last_dollar_volume = last_close * last_volume
-            
-            if last_close < min_price or last_dollar_volume < min_volume_usd:
-                return False, None
-            
-            return True, df
-        except:
-            return False, None
-    
-    def screen_stock(self, symbol):
-        """完整筛选单只股票"""
-        try:
-            # 第一轮过滤
-            passed, df = self.filter_stock(symbol)
-            if not passed:
-                return False, None
-            
-            # 计算趋势信号
-            up1, up2, up3, down1, down2, down3 = self.calculate_trend_signals(df)
-            
-            # 计算背离信号
-            lll, dbl, diff, dea, diff_cross_up, diff_cross_down = self.calculate_divergence_signals(df)
-            
-            # 买卖信号
-            buy = lll & diff_cross_up
-            sell = dbl & diff_cross_down
-            
-            # 检查最新信号
-            last_idx = -1
-            has_buy = bool(buy.iloc[last_idx])
-            has_sell = bool(sell.iloc[last_idx])
-            has_up1 = bool(up1.iloc[last_idx])
-            has_up2 = bool(up2.iloc[last_idx])
-            has_up3 = bool(up3.iloc[last_idx])
-            has_down1 = bool(down1.iloc[last_idx])
-            has_down2 = bool(down2.iloc[last_idx])
-            has_down3 = bool(down3.iloc[last_idx])
-            
-            # 只保留有信号的股票
-            if not any([has_buy, has_sell, has_up1, has_up2, has_up3, has_down1, has_down2, has_down3]):
-                return False, None
-            
-            last_close = df['close'].iloc[-1]
-            last_volume = df['volume'].iloc[-1]
-            last_dollar_volume = last_close * last_volume
-            
-            return True, {
-                'symbol': symbol,
-                'price': float(last_close),
-                'volume_usd': float(last_dollar_volume / 1_000_000),
-                'buy': has_buy,
-                'sell': has_sell,
-                'up1': has_up1,
-                'up2': has_up2,
-                'up3': has_up3,
-                'down1': has_down1,
-                'down2': has_down2,
-                'down3': has_down3,
-                'diff': float(diff.iloc[last_idx]),
-                'dea': float(dea.iloc[last_idx])
+                result.iloc[i] = np.nan
+        return result
+
+    def calculate_divergence_signals(self, df: pd.DataFrame) -> pd.DataFrame:
+        """计算背离信号"""
+        # 计算 N1 和 MM1
+        df['N1'] = self.bars_since((df['MACD'].shift(1) >= 0) & (df['MACD'] < 0))
+        df['MM1'] = self.bars_since((df['MACD'].shift(1) <= 0) & (df['MACD'] > 0))
+
+        # 填充无效值
+        df['valid_N1'] = df['N1'].fillna(1).astype(int)
+        df['valid_MM1'] = df['MM1'].fillna(1).astype(int)
+
+        # 计算底背离相关指标
+        df['CC1'] = df['Close'].rolling(window=1).apply(
+            lambda x: df['Close'].iloc[max(0, len(df) - int(df['valid_N1'].iloc[-1]) - 1):].min()
+            if len(df) > 0 else np.nan, raw=False
+        )
+
+        df['DIFL1'] = df['DIFF'].rolling(window=1).apply(
+            lambda x: df['DIFF'].iloc[max(0, len(df) - int(df['valid_N1'].iloc[-1]) - 1):].min()
+            if len(df) > 0 else np.nan, raw=False
+        )
+
+        # 简化的背离判断
+        df['AAA'] = (
+            (df['CC1'] < df['CC1'].shift(int(df['valid_MM1'].iloc[-1]) + 1)) &
+            (df['DIFL1'] > df['DIFL1'].shift(int(df['valid_MM1'].iloc[-1]) + 1)) &
+            (df['MACD'].shift(1) < 0) & (df['DIFF'] < 0)
+        )
+
+        df['CCC'] = df['AAA'] & (df['DIFF'] < 0)
+        df['LLL'] = (~df['CCC'].shift(1).fillna(False)) & df['CCC']
+
+        # 计算顶背离相关指标
+        df['CH1'] = df['Close'].rolling(window=1).apply(
+            lambda x: df['Close'].iloc[max(0, len(df) - int(df['valid_MM1'].iloc[-1]) - 1):].max()
+            if len(df) > 0 else np.nan, raw=False
+        )
+
+        df['DIFH1'] = df['DIFF'].rolling(window=1).apply(
+            lambda x: df['DIFF'].iloc[max(0, len(df) - int(df['valid_MM1'].iloc[-1]) - 1):].max()
+            if len(df) > 0 else np.nan, raw=False
+        )
+
+        df['ZJDBL'] = (
+            (df['CH1'] > df['CH1'].shift(int(df['valid_N1'].iloc[-1]) + 1)) &
+            (df['DIFH1'] < df['DIFH1'].shift(int(df['valid_N1'].iloc[-1]) + 1)) &
+            (df['MACD'].shift(1) > 0) & (df['DIFF'] > 0)
+        )
+
+        df['DBBL'] = df['ZJDBL'] & (df['DIFF'] > 0)
+        df['DBL'] = (~df['DBBL'].shift(1).fillna(False)) & df['DBBL'] & (df['DIFF'] > df['DEA'])
+
+        return df
+
+    def calculate_trend_signals(self, df: pd.DataFrame) -> Dict[str, bool]:
+        """计算趋势信号"""
+        if len(df) < 2:
+            return {
+                'up1': False, 'up2': False, 'up3': False,
+                'down1': False, 'down2': False, 'down3': False
             }
+
+        close = df['Close'].iloc[-1]
+        close_prev = df['Close'].iloc[-2]
+        blue_top = df['blue_top'].iloc[-1]
+        blue_top_prev = df['blue_top'].iloc[-2]
+        blue_bottom = df['blue_bottom'].iloc[-1]
+        blue_bottom_prev = df['blue_bottom'].iloc[-2]
+        yellow_top = df['yellow_top'].iloc[-1]
+        yellow_top_prev = df['yellow_top'].iloc[-2]
+        yellow_bottom = df['yellow_bottom'].iloc[-1]
+        yellow_bottom_prev = df['yellow_bottom'].iloc[-2]
+
+        return {
+            'up1': close > blue_top and close_prev < blue_top_prev,
+            'up2': close > yellow_top and close_prev < yellow_top_prev,
+            'up3': blue_bottom > yellow_top and blue_bottom_prev < yellow_top_prev,
+            'down1': close < blue_bottom and close_prev > blue_bottom_prev,
+            'down2': close < yellow_bottom and close_prev > yellow_bottom_prev,
+            'down3': blue_bottom < yellow_bottom and blue_bottom_prev > yellow_bottom_prev
+        }
+
+    def calculate_buy_sell_signals(self, df: pd.DataFrame) -> Tuple[bool, bool]:
+        """计算买卖信号"""
+        if len(df) < 2:
+            return False, False
+
+        # 简化的买卖信号逻辑
+        diff_cross_up = (df['DIFF'].iloc[-2] <= df['DEA'].iloc[-2]) and (df['DIFF'].iloc[-1] > df['DEA'].iloc[-1])
+        diff_cross_down = (df['DIFF'].iloc[-2] >= df['DEA'].iloc[-2]) and (df['DIFF'].iloc[-1] < df['DEA'].iloc[-1])
+
+        # 买入信号：底背离 + DIFF 上穿 DEA
+        buy = df['LLL'].iloc[-1] and diff_cross_up if 'LLL' in df.columns else False
+
+        # 卖出信号：顶背离 + DIFF 下穿 DEA
+        sell = df['DBL'].iloc[-1] and diff_cross_down if 'DBL' in df.columns else False
+
+        return buy, sell
+
+    def filter_stock(self, symbol: str) -> bool:
+        """过滤股票"""
+        try:
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+
+            # 获取最新价格
+            current_price = info.get('currentPrice') or info.get('regularMarketPrice')
+            if current_price is None or current_price < self.min_price:
+                return False
+
+            # 获取交易量和价格计算交易额
+            volume = info.get('volume') or info.get('regularMarketVolume')
+            if volume is None:
+                return False
+
+            volume_usd = volume * current_price
+            if volume_usd < self.min_volume_usd:
+                return False
+
+            return True
+
+        except Exception:
+            return False
+
+    def analyze_stock(self, symbol: str, period: str = '6mo') -> Dict:
+        """分析单个股票"""
+        try:
+            # 下载数据
+            df = yf.download(symbol, period=period, progress=False)
+
+            if df.empty or len(df) < 100:
+                return None
+
+            # 计算指标
+            df = self.calculate_bands(df)
+            df = self.calculate_macd(df)
+            df = self.calculate_divergence_signals(df)
+
+            # 计算信号
+            trend_signals = self.calculate_trend_signals(df)
+            buy, sell = self.calculate_buy_sell_signals(df)
+
+            # 获取最新数据
+            latest = df.iloc[-1]
+
+            return {
+                'symbol': symbol,
+                'price': latest['Close'],
+                'buy': buy,
+                'sell': sell,
+                **trend_signals
+            }
+
         except Exception as e:
-            return False, None
-    
-    def get_market_symbols(self):
-        """获取市场股票列表（S&P 500 + NASDAQ 100）"""
-        symbols = []
-        
-        # 尝试获取S&P 500
-        try:
-            url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-            tables = pd.read_html(url)
-            df = tables[0]
-            sp500 = [s.replace('.', '-') for s in df['Symbol'].tolist()]
-            symbols.extend(sp500)
-        except:
-            # 备用列表
-            sp500_backup = [
-                'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'BRK-B',
-                'UNH', 'JNJ', 'XOM', 'V', 'PG', 'JPM', 'MA', 'HD', 'CVX', 'MRK',
-                'ABBV', 'PEP', 'KO', 'AVGO', 'COST', 'LLY', 'WMT', 'MCD', 'CSCO',
-                'ACN', 'ABT', 'TMO', 'DHR', 'VZ', 'ADBE', 'NKE', 'CRM', 'NFLX',
-                'ORCL', 'INTC', 'AMD', 'QCOM', 'TXN', 'CMCSA', 'PM', 'UNP', 'NEE',
-                'HON', 'RTX', 'UPS', 'LOW', 'BA', 'SBUX', 'IBM', 'CAT', 'GE'
-            ]
-            symbols.extend(sp500_backup)
-        
-        # 尝试获取NASDAQ 100
-        try:
-            url = 'https://en.wikipedia.org/wiki/Nasdaq-100'
-            tables = pd.read_html(url)
-            df = tables[4]
-            nasdaq100 = df['Ticker'].tolist()
-            symbols.extend(nasdaq100)
-        except:
-            # 备用列表
-            nasdaq100_backup = [
-                'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'AVGO',
-                'COST', 'NFLX', 'ADBE', 'CSCO', 'PEP', 'TMUS', 'CMCSA', 'INTC',
-                'AMD', 'QCOM', 'TXN', 'INTU', 'AMAT', 'ISRG', 'BKNG', 'ADP',
-                'GILD', 'REGN', 'VRTX', 'LRCX', 'PANW', 'KLAC', 'SNPS', 'CDNS'
-            ]
-            symbols.extend(nasdaq100_backup)
-        
-        # 去重
-        return list(set(symbols))
+            return None
+
+    def screen_stocks(self, symbols: List[str], max_workers: int = 10) -> pd.DataFrame:
+        """筛选股票"""
+        results = []
+
+        print(f"开始筛选 {len(symbols)} 只股票...")
+
+        # 第一步：过滤股票
+        print("第一步：应用价格和交易量过滤...")
+        filtered_symbols = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_symbol = {executor.submit(self.filter_stock, symbol): symbol for symbol in symbols}
+            for i, future in enumerate(as_completed(future_to_symbol), 1):
+                symbol = future_to_symbol[future]
+                try:
+                    if future.result():
+                        filtered_symbols.append(symbol)
+                    if i % 50 == 0:
+                        print(f"已过滤 {i}/{len(symbols)} 只股票，通过 {len(filtered_symbols)} 只")
+                except Exception:
+                    pass
+
+        print(f"过滤完成，剩余 {len(filtered_symbols)} 只股票")
+
+        # 第二步：分析股票
+        print("第二步：计算技术指标...")
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_symbol = {executor.submit(self.analyze_stock, symbol): symbol for symbol in filtered_symbols}
+            for i, future in enumerate(as_completed(future_to_symbol), 1):
+                try:
+                    result = future.result()
+                    if result:
+                        results.append(result)
+                    if i % 10 == 0:
+                        print(f"已分析 {i}/{len(filtered_symbols)} 只股票")
+                except Exception:
+                    pass
+
+        print(f"分析完成，成功分析 {len(results)} 只股票")
+
+        if not results:
+            return pd.DataFrame()
+
+        df_results = pd.DataFrame(results)
+        return df_results
+
+
+def get_us_stock_list() -> List[str]:
+    """获取美股列表"""
+    # 这里使用一些常见的美股列表
+    # 实际应用中可以从更完整的数据源获取
+    import requests
+
+    try:
+        # 获取 S&P 500 成分股
+        url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+        tables = pd.read_html(url)
+        sp500 = tables[0]['Symbol'].tolist()
+
+        # 获取 NASDAQ 100 成分股
+        url = 'https://en.wikipedia.org/wiki/Nasdaq-100'
+        tables = pd.read_html(url)
+        nasdaq100 = tables[4]['Ticker'].tolist()
+
+        # 合并并去重
+        symbols = list(set(sp500 + nasdaq100))
+        return symbols
+
+    except Exception as e:
+        print(f"获取股票列表失败: {e}")
+        # 返回一些常见股票作为示例
+        return [
+            'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'BRK.B',
+            'UNH', 'JNJ', 'V', 'WMT', 'XOM', 'JPM', 'PG', 'MA', 'HD', 'CVX',
+            'LLY', 'ABBV', 'MRK', 'KO', 'PEP', 'AVGO', 'COST', 'TMO', 'MCD'
+        ]
+
+
+if __name__ == '__main__':
+    # 创建选股器
+    screener = DYScreener(min_price=0.1, min_volume_usd=10_000_000)
+
+    # 获取股票列表
+    symbols = get_us_stock_list()
+    print(f"获取到 {len(symbols)} 只股票")
+
+    # 筛选股票
+    results = screener.screen_stocks(symbols, max_workers=10)
+
+    # 显示结果
+    if not results.empty:
+        print("\n=== 筛选结果 ===")
+        print(f"总共找到 {len(results)} 只符合条件的股票\n")
+
+        # 显示买入信号的股票
+        buy_signals = results[results['buy'] == True]
+        if not buy_signals.empty:
+            print(f"\n买入信号 ({len(buy_signals)} 只):")
+            print(buy_signals[['symbol', 'price', 'up1', 'up2', 'up3']].to_string(index=False))
+
+        # 显示卖出信号的股票
+        sell_signals = results[results['sell'] == True]
+        if not sell_signals.empty:
+            print(f"\n卖出信号 ({len(sell_signals)} 只):")
+            print(sell_signals[['symbol', 'price', 'down1', 'down2', 'down3']].to_string(index=False))
+
+        # 保存完整结果
+        results.to_csv('dy_screener_results.csv', index=False)
+        print(f"\n完整结果已保存到 dy_screener_results.csv")
+    else:
+        print("未找到符合条件的股票")

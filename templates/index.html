@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>三层量化策略系统 - 控制面板</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- 头部 -->
+        <header class="header">
+            <h1>📊 三层量化策略系统</h1>
+            <div class="header-info">
+                <span id="current-time"></span>
+                <span class="status-badge" id="system-status">运行中</span>
+            </div>
+        </header>
+
+        <!-- 资金概览 -->
+        <section class="overview">
+            <div class="card">
+                <h3>总资金</h3>
+                <div class="value" id="total-capital">¥1,000,000</div>
+            </div>
+            <div class="card">
+                <h3>总收益率</h3>
+                <div class="value positive" id="total-return">+18.5%</div>
+            </div>
+            <div class="card">
+                <h3>夏普比率</h3>
+                <div class="value" id="sharpe-ratio">1.65</div>
+            </div>
+            <div class="card">
+                <h3>最大回撤</h3>
+                <div class="value negative" id="max-drawdown">-12.3%</div>
+            </div>
+        </section>
+
+        <!-- 三层策略状态 -->
+        <section class="layers">
+            <div class="layer-card layer1">
+                <div class="layer-header">
+                    <h2>第一层：基石层</h2>
+                    <span class="layer-weight">50%</span>
+                </div>
+                <div class="layer-info">
+                    <p><strong>策略：</strong>多因子回归</p>
+                    <p><strong>频率：</strong>月频</p>
+                    <p><strong>持仓：</strong><span id="layer1-holdings">0</span> 只股票</p>
+                    <p><strong>资金：</strong>¥<span id="layer1-capital">500,000</span></p>
+                </div>
+                <button class="btn btn-primary" onclick="runLayer('layer1')">运行基石层</button>
+            </div>
+
+            <div class="layer-card layer2">
+                <div class="layer-header">
+                    <h2>第二层：轮动层</h2>
+                    <span class="layer-weight">30%</span>
+                </div>
+                <div class="layer-info">
+                    <p><strong>策略：</strong>随机森林</p>
+                    <p><strong>频率：</strong>周频</p>
+                    <p><strong>持仓：</strong><span id="layer2-holdings">0</span> 只股票</p>
+                    <p><strong>资金：</strong>¥<span id="layer2-capital">300,000</span></p>
+                </div>
+                <button class="btn btn-primary" onclick="runLayer('layer2')">运行轮动层</button>
+            </div>
+
+            <div class="layer-card layer3">
+                <div class="layer-header">
+                    <h2>第三层：择时层</h2>
+                    <span class="layer-weight">20%</span>
+                </div>
+                <div class="layer-info">
+                    <p><strong>策略：</strong>KNN+SVM+NLP</p>
+                    <p><strong>频率：</strong>日频</p>
+                    <p><strong>仓位：</strong><span id="layer3-position">0</span>%</p>
+                    <p><strong>资金：</strong>¥<span id="layer3-capital">200,000</span></p>
+                </div>
+                <button class="btn btn-primary" onclick="runLayer('layer3')">运行择时层</button>
+            </div>
+        </section>
+
+        <!-- 控制面板 -->
+        <section class="controls">
+            <button class="btn btn-success btn-large" onclick="runAllLayers()">
+                🚀 运行全部策略
+            </button>
+            <button class="btn btn-secondary" onclick="refreshData()">
+                🔄 刷新数据
+            </button>
+        </section>
+
+        <!-- 收益曲线 -->
+        <section class="chart-section">
+            <h2>收益曲线</h2>
+            <div class="chart-container">
+                <canvas id="returnsChart"></canvas>
+            </div>
+        </section>
+
+        <!-- 持仓详情 -->
+        <section class="holdings">
+            <h2>持仓详情</h2>
+            <div class="holdings-grid">
+                <div class="holdings-card">
+                    <h3>基石层持仓</h3>
+                    <div id="layer1-holdings-list" class="holdings-list">
+                        <p class="empty">暂无持仓</p>
+                    </div>
+                </div>
+                <div class="holdings-card">
+                    <h3>轮动层持仓</h3>
+                    <div id="layer2-holdings-list" class="holdings-list">
+                        <p class="empty">暂无持仓</p>
+                    </div>
+                </div>
+                <div class="holdings-card">
+                    <h3>择时层状态</h3>
+                    <div id="layer3-status" class="holdings-list">
+                        <p class="empty">暂无数据</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 运行日志 -->
+        <section class="logs">
+            <h2>运行日志</h2>
+            <div id="log-container" class="log-container">
+                <p class="empty">暂无日志</p>
+            </div>
+        </section>
+    </div>
+
+    <!-- 消息提示 -->
+    <div id="toast" class="toast"></div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

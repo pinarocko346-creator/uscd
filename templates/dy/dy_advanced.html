@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DY 选股器 - 高级功能</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .nav-tab {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background: #f0f0f0;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .nav-tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin: 20px 0;
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .comparison-table th,
+        .comparison-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .comparison-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+
+        .positive {
+            color: #28a745;
+        }
+
+        .negative {
+            color: #dc3545;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+        }
+
+        .strategy-card {
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .strategy-card h4 {
+            margin-bottom: 10px;
+        }
+
+        .strategy-card .actions {
+            margin-top: 10px;
+        }
+
+        .strategy-card .actions button {
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 DY 选股器 - 高级功能</h1>
+            <p>策略回测、自定义策略、历史追踪、性能分析</p>
+
+            <div class="nav-tabs">
+                <button class="nav-tab active" onclick="switchTab('backtest')">策略回测</button>
+                <button class="nav-tab" onclick="switchTab('compare')">策略对比</button>
+                <button class="nav-tab" onclick="switchTab('custom')">自定义策略</button>
+                <button class="nav-tab" onclick="switchTab('history')">历史追踪</button>
+                <button class="nav-tab" onclick="switchTab('performance')">性能分析</button>
+            </div>
+        </div>
+
+        <!-- 策略回测 -->
+        <div id="backtest-tab" class="tab-content active">
+            <div class="panel">
+                <h3>策略回测</h3>
+                <p>测试策略在历史数据上的表现</p>
+
+                <div class="form-group">
+                    <label>选择策略</label>
+                    <select id="backtest-strategy">
+                        <option value="aggressive">激进策略</option>
+                        <option value="stable" selected>稳健策略</option>
+                        <option value="strongest">最强策略</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>回测天数</label>
+                    <input type="number" id="backtest-days" value="180" min="30" max="365">
+                </div>
+
+                <button class="btn btn-primary" onclick="runBacktest()">开始回测</button>
+
+                <div id="backtest-results" style="display: none; margin-top: 20px;">
+                    <h4>回测结果</h4>
+                    <table class="comparison-table">
+                        <tr>
+                            <th>指标</th>
+                            <th>数值</th>
+                        </tr>
+                        <tbody id="backtest-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 策略对比 -->
+        <div id="compare-tab" class="tab-content">
+            <div class="panel">
+                <h3>策略对比</h3>
+                <p>对比多个策略的表现</p>
+
+                <button class="btn btn-primary" onclick="compareStrategies()">对比三种策略</button>
+
+                <div id="compare-results" style="display: none; margin-top: 20px;">
+                    <div class="chart-container">
+                        <canvas id="compareChart"></canvas>
+                    </div>
+
+                    <table class="comparison-table">
+                        <thead>
+                            <tr>
+                                <th>策略</th>
+                                <th>总收益率</th>
+                                <th>交易次数</th>
+                                <th>胜率</th>
+                                <th>盈亏比</th>
+                            </tr>
+                        </thead>
+                        <tbody id="compare-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 自定义策略 -->
+        <div id="custom-tab" class="tab-content">
+            <div class="panel">
+                <h3>自定义策略</h3>
+                <p>创建和管理自定义筛选策略</p>
+
+                <div class="form-group">
+                    <label>策略名称</label>
+                    <input type="text" id="custom-name" placeholder="例如：我的策略">
+                </div>
+
+                <div class="form-group">
+                    <label>策略描述</label>
+                    <textarea id="custom-description" rows="2" placeholder="描述策略的特点和适用场景"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>筛选条件</label>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                        <label><input type="checkbox" id="cond-buy"> 买入信号</label>
+                        <label><input type="checkbox" id="cond-sell"> 卖出信号</label>
+                        <label><input type="checkbox" id="cond-up1"> UP1</label>
+                        <label><input type="checkbox" id="cond-up2"> UP2</label>
+                        <label><input type="checkbox" id="cond-up3"> UP3</label>
+                        <label><input type="checkbox" id="cond-down1"> DOWN1</label>
+                        <label><input type="checkbox" id="cond-down2"> DOWN2</label>
+                        <label><input type="checkbox" id="cond-down3"> DOWN3</label>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" onclick="createCustomStrategy()">创建策略</button>
+
+                <div id="custom-strategies-list" style="margin-top: 30px;">
+                    <h4>已保存的策略</h4>
+                    <div id="strategies-container"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 历史追踪 -->
+        <div id="history-tab" class="tab-content">
+            <div class="panel">
+                <h3>历史信号追踪</h3>
+                <p>查看和分析历史信号记录</p>
+
+                <button class="btn btn-primary" onclick="saveCurrentSignals()">保存当前信号</button>
+                <button class="btn btn-primary" onclick="loadSignalHistory()">查看历史</button>
+
+                <div id="history-results" style="display: none; margin-top: 20px;">
+                    <table class="comparison-table">
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>股票</th>
+                                <th>价格</th>
+                                <th>买入</th>
+                                <th>卖出</th>
+                                <th>趋势</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 性能分析 -->
+        <div id="performance-tab" class="tab-content">
+            <div class="panel">
+                <h3>策略性能分析</h3>
+                <p>分析各策略的历史表现</p>
+
+                <div class="form-group">
+                    <label>选择策略</label>
+                    <select id="perf-strategy">
+                        <option value="aggressive">激进策略</option>
+                        <option value="stable">稳健策略</option>
+                        <option value="strongest">最强策略</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-primary" onclick="analyzePerformance()">分析表现</button>
+
+                <div id="performance-results" style="display: none; margin-top: 20px;">
+                    <div class="chart-container">
+                        <canvas id="performanceChart"></canvas>
+                    </div>
+
+                    <table class="comparison-table">
+                        <tr>
+                            <th>指标</th>
+                            <th>数值</th>
+                        </tr>
+                        <tbody id="performance-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 切换标签
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            document.getElementById(tabName + '-tab').classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // 运行回测
+        async function runBacktest() {
+            const strategy = document.getElementById('backtest-strategy').value;
+            const days = parseInt(document.getElementById('backtest-days').value);
+
+            try {
+                const response = await fetch('/api/backtest', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({strategy, days})
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    displayBacktestResults(data.result);
+                } else {
+                    alert('回测失败: ' + data.error);
+                }
+            } catch (error) {
+                alert('回测失败: ' + error.message);
+            }
+        }
+
+        // 显示回测结果
+        function displayBacktestResults(result) {
+            const tbody = document.getElementById('backtest-table-body');
+            tbody.innerHTML = `
+                <tr><td>总收益率</td><td class="${result.total_return_pct > 0 ? 'positive' : 'negative'}">${result.total_return_pct}%</td></tr>
+                <tr><td>交易次数</td><td>${result.total_trades}</td></tr>
+                <tr><td>胜率</td><td>${result.win_rate_pct}%</td></tr>
+                <tr><td>平均盈利</td><td class="positive">$${result.avg_win}</td></tr>
+                <tr><td>平均亏损</td><td class="negative">$${result.avg_loss}</td></tr>
+                <tr><td>盈亏比</td><td>${result.profit_factor}</td></tr>
+                <tr><td>最终资金</td><td>$${result.final_capital.toLocaleString()}</td></tr>
+            `;
+            document.getElementById('backtest-results').style.display = 'block';
+        }
+
+        // 对比策略
+        async function compareStrategies() {
+            try {
+                const response = await fetch('/api/compare_strategies', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        strategies: ['aggressive', 'stable', 'strongest'],
+                        days: 180
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    displayCompareResults(data.results);
+                } else {
+                    alert('对比失败: ' + data.error);
+                }
+            } catch (error) {
+                alert('对比失败: ' + error.message);
+            }
+        }
+
+        // 显示对比结果
+        function displayCompareResults(results) {
+            // 表格
+            const tbody = document.getElementById('compare-table-body');
+            tbody.innerHTML = results.map(r => `
+                <tr>
+                    <td>${r.strategy}</td>
+                    <td class="${r.total_return_pct > 0 ? 'positive' : 'negative'}">${r.total_return_pct}%</td>
+                    <td>${r.total_trades}</td>
+                    <td>${r.win_rate_pct}%</td>
+                    <td>${r.profit_factor}</td>
+                </tr>
+            `).join('');
+
+            // 图表
+            const ctx = document.getElementById('compareChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: results.map(r => r.strategy),
+                    datasets: [{
+                        label: '总收益率 (%)',
+                        data: results.map(r => r.total_return_pct),
+                        backgroundColor: ['#ff6b6b', '#51cf66', '#ffd43b']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+
+            document.getElementById('compare-results').style.display = 'block';
+        }
+
+        // 创建自定义策略
+        async function createCustomStrategy() {
+            const name = document.getElementById('custom-name').value;
+            const description = document.getElementById('custom-description').value;
+
+            const conditions = {};
+            if (document.getElementById('cond-buy').checked) conditions.buy = true;
+            if (document.getElementById('cond-sell').checked) conditions.sell = true;
+            if (document.getElementById('cond-up1').checked) conditions.up1 = true;
+            if (document.getElementById('cond-up2').checked) conditions.up2 = true;
+            if (document.getElementById('cond-up3').checked) conditions.up3 = true;
+            if (document.getElementById('cond-down1').checked) conditions.down1 = true;
+            if (document.getElementById('cond-down2').checked) conditions.down2 = true;
+            if (document.getElementById('cond-down3').checked) conditions.down3 = true;
+
+            try {
+                const response = await fetch('/api/custom_strategies', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name, description, conditions})
+                });
+
+                const data = await response.json();
+                alert(data.message);
+                if (data.success) {
+                    loadCustomStrategies();
+                }
+            } catch (error) {
+                alert('创建失败: ' + error.message);
+            }
+        }
+
+        // 加载自定义策略
+        async function loadCustomStrategies() {
+            try {
+                const response = await fetch('/api/custom_strategies');
+                const data = await response.json();
+
+                const container = document.getElementById('strategies-container');
+                container.innerHTML = data.strategies.map(s => `
+                    <div class="strategy-card">
+                        <h4>${s.name}</h4>
+                        <p>${s.description}</p>
+                        <div class="actions">
+                            <button class="btn btn-primary" onclick="applyStrategy('${s.name}')">应用</button>
+                            <button class="btn" onclick="deleteStrategy('${s.name}')">删除</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('加载策略失败:', error);
+            }
+        }
+
+        // 删除策略
+        async function deleteStrategy(name) {
+            if (!confirm(`确定删除策略"${name}"吗？`)) return;
+
+            try {
+                const response = await fetch(`/api/custom_strategies/${name}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                alert(data.message);
+                if (data.success) {
+                    loadCustomStrategies();
+                }
+            } catch (error) {
+                alert('删除失败: ' + error.message);
+            }
+        }
+
+        // 保存当前信号
+        async function saveCurrentSignals() {
+            try {
+                const response = await fetch('/api/save_signals', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({})
+                });
+
+                const data = await response.json();
+                alert(data.message || data.error);
+            } catch (error) {
+                alert('保存失败: ' + error.message);
+            }
+        }
+
+        // 加载历史信号
+        async function loadSignalHistory() {
+            try {
+                const response = await fetch('/api/signal_history');
+                const data = await response.json();
+
+                const tbody = document.getElementById('history-table-body');
+                tbody.innerHTML = data.signals.slice(0, 50).map(s => `
+                    <tr>
+                        <td>${s.date}</td>
+                        <td>${s.symbol}</td>
+                        <td>$${s.price.toFixed(2)}</td>
+                        <td>${s.buy ? '✓' : ''}</td>
+                        <td>${s.sell ? '✓' : ''}</td>
+                        <td>${[s.up1 && 'UP1', s.up2 && 'UP2', s.up3 && 'UP3'].filter(Boolean).join(', ')}</td>
+                    </tr>
+                `).join('');
+
+                document.getElementById('history-results').style.display = 'block';
+            } catch (error) {
+                alert('加载失败: ' + error.message);
+            }
+        }
+
+        // 分析性能
+        async function analyzePerformance() {
+            const strategy = document.getElementById('perf-strategy').value;
+
+            try {
+                const response = await fetch(`/api/strategy_performance/${strategy}?days=5`);
+                const data = await response.json();
+
+                if (data.success) {
+                    displayPerformance(data.performance);
+                }
+            } catch (error) {
+                alert('分析失败: ' + error.message);
+            }
+        }
+
+        // 显示性能
+        function displayPerformance(perf) {
+            const tbody = document.getElementById('performance-table-body');
+            tbody.innerHTML = `
+                <tr><td>总信号数</td><td>${perf.total_signals}</td></tr>
+                <tr><td>平均收益</td><td class="${perf.avg_return > 0 ? 'positive' : 'negative'}">${perf.avg_return.toFixed(2)}%</td></tr>
+                <tr><td>胜率</td><td>${perf.win_rate.toFixed(2)}%</td></tr>
+                <tr><td>最大收益</td><td class="positive">${perf.max_return.toFixed(2)}%</td></tr>
+                <tr><td>最大亏损</td><td class="negative">${perf.min_return.toFixed(2)}%</td></tr>
+            `;
+
+            document.getElementById('performance-results').style.display = 'block';
+        }
+
+        // 页面加载时加载自定义策略
+        window.onload = function() {
+            loadCustomStrategies();
+        };
+    </script>
+</body>
+</html>

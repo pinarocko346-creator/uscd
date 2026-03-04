@@ -1,5 +1,21 @@
-yfinance
-pandas
-numpy
-lxml
-html5lib
+# 三层量化系统依赖包
+
+# 数据处理
+pandas>=1.5.0
+numpy>=1.23.0
+
+# 机器学习
+scikit-learn>=1.2.0
+
+# Web框架
+Flask>=2.3.0
+
+# 数据获取
+yfinance>=0.2.0  # DY 选股器使用
+# tushare>=1.2.89
+# akshare>=1.10.0
+
+# 其他工具
+scipy>=1.10.0
+lxml>=4.9.0  # 用于解析 HTML 表格
+html5lib>=1.1  # 用于解析 HTML

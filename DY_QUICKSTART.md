@@ -1,166 +1,140 @@
-# DY策略选股器 - 快速入门
+# DY 选股器快速入门
 
-## 5分钟上手指南
-
-### 第一步：安装依赖
+## 1. 安装依赖
 
 ```bash
-pip install yfinance pandas numpy lxml html5lib
+cd /Users/apple/three-layer-quant-system
+pip install -r requirements.txt
 ```
 
-### 第二步：快速测试
+## 2. 快速测试（推荐先运行）
+
+使用少量股票测试功能是否正常：
 
 ```bash
 python test_dy_screener.py
 ```
 
-这会测试10只常见股票（AAPL, MSFT, GOOGL等），大约需要10-20秒。
+这会分析约 20 只测试股票，运行时间约 1-2 分钟。
 
-**预期输出：**
-```
-============================================================
-DY策略选股器 - 快速测试
-============================================================
+## 3. 运行完整版本
 
-测试 10 只股票...
-------------------------------------------------------------
-
-[1/10] 正在分析 AAPL...
-  ✗ 无信号或不符合条件
-
-[2/10] 正在分析 MSFT...
-  ✓ 有信号: DOWN1
-  价格: $420.50
-  成交额: $2500.00M
-  DIFF: -0.5000, DEA: 0.2000
-
-...
-
-============================================================
-测试完成！
-入选: 3/10 只
-耗时: 15.23 秒
-============================================================
-```
-
-### 第三步：运行完整版
+### 方式一：使用默认参数
 
 ```bash
-# 测试模式：只筛选前50只股票
-python dy_stock_screener.py --max-stocks 50
-
-# 完整模式：筛选所有600+只股票（需要5-10分钟）
 python dy_stock_screener.py
 ```
 
-### 第四步：查看结果
+这会：
+- 自动获取 S&P 500 和 NASDAQ 100 成分股（约 600 只）
+- 过滤价格 < $0.1 的股票
+- 过滤日交易额 < $10,000,000 的股票
+- 使用 10 个并发线程
+- 结果保存到 `dy_screener_results.csv`
 
-程序会生成CSV文件，例如 `dy_qualified_20240304_120000.csv`
+运行时间：约 5-10 分钟（取决于网络速度）
 
-用Excel或Python打开：
-
-```python
-import pandas as pd
-
-df = pd.read_csv('dy_qualified_20240304_120000.csv')
-
-# 查看买入信号的股票
-buy_stocks = df[df['buy'] == True]
-print(buy_stocks[['symbol', 'price', 'buy', 'up1', 'up2', 'up3']])
-```
-
-## 信号解读
-
-### 买入信号（BUY）
-
-**含义**：底背离 + MACD金叉
-
-**操作建议**：
-- 如果同时有 UP1/UP2/UP3，信号更强
-- 建议等待回调后再入场
-- 设置止损在最近低点下方
-
-### 卖出信号（SELL）
-
-**含义**：顶背离 + MACD死叉
-
-**操作建议**：
-- 如果持有该股票，考虑减仓或止盈
-- 如果同时有 DOWN1/DOWN2/DOWN3，下跌风险更大
-
-### 趋势信号
-
-| 信号 | 含义 | 强度 |
-|------|------|------|
-| UP1 | 突破短期阻力 | ⭐⭐ |
-| UP2 | 突破长期阻力 | ⭐⭐⭐ |
-| UP3 | 强势突破 | ⭐⭐⭐⭐⭐ |
-| DOWN1 | 跌破短期支撑 | ⚠️⚠️ |
-| DOWN2 | 跌破长期支撑 | ⚠️⚠️⚠️ |
-| DOWN3 | 弱势破位 | ⚠️⚠️⚠️⚠️⚠️ |
-
-## 实战策略
-
-### 激进策略
-
-```python
-# 只要有买入信号就关注
-buy_stocks = df[df['buy'] == True]
-```
-
-### 稳健策略
-
-```python
-# 买入信号 + 上涨趋势
-strong_buy = df[(df['buy'] == True) & (df['up1'] == True)]
-```
-
-### 最强策略
-
-```python
-# 买入信号 + 强势突破
-strongest = df[(df['buy'] == True) & (df['up3'] == True)]
-```
-
-### 风险控制
-
-```python
-# 持仓股票出现卖出信号，考虑止盈
-sell_alert = df[df['sell'] == True]
-```
-
-## 常用命令
+### 方式二：自定义参数
 
 ```bash
-# 快速测试
-python test_dy_screener.py
+# 提高过滤标准（只看大盘股）
+python dy_stock_screener.py --min-price 10 --min-volume 100000000
 
-# 测试50只股票
-python dy_stock_screener.py --max-stocks 50
+# 只分析指定的股票
+python dy_stock_screener.py --symbols AAPL MSFT GOOGL TSLA NVDA META AMZN
 
-# 完整筛选（600+只）
-python dy_stock_screener.py
-
-# 使用20个线程加速
+# 增加并发线程（加快速度）
 python dy_stock_screener.py --workers 20
 
-# 指定输出文件名
-python dy_stock_screener.py --output my_results.csv
+# 组合使用
+python dy_stock_screener.py --min-price 5 --min-volume 50000000 --workers 15 --output my_results.csv
 ```
 
-## 下一步
+## 4. 查看结果
 
-1. 阅读 [DY_SCREENER_README.md](DY_SCREENER_README.md) 了解详细逻辑
-2. 根据自己的风险偏好调整筛选条件
-3. 结合其他分析工具（基本面、资金流等）
-4. 建立自己的交易系统和风险管理规则
+### 控制台输出
 
-## 获取帮助
+程序会实时显示：
+- 筛选进度
+- 买入信号的股票
+- 卖出信号的股票
+- 趋势信号统计
+
+### CSV 文件
+
+打开 `dy_screener_results.csv` 查看完整结果，可以用 Excel 或其他工具进一步分析。
+
+## 5. 理解信号
+
+### 买入信号 🟢
+- 出现底背离
+- MACD DIFF 上穿 DEA
+- 建议关注的买入机会
+
+### 卖出信号 🔴
+- 出现顶背离
+- MACD DIFF 下穿 DEA
+- 建议关注的卖出机会
+
+### 趋势信号
+- **UP1**: 突破短期阻力（蓝带上轨）
+- **UP2**: 突破长期阻力（黄带上轨）
+- **UP3**: 强势信号（蓝带突破黄带）
+- **DOWN1**: 跌破短期支撑（蓝带下轨）
+- **DOWN2**: 跌破长期支撑（黄带下轨）
+- **DOWN3**: 弱势信号（蓝带跌破黄带）
+
+## 6. 常见问题
+
+### Q: 运行很慢怎么办？
+A: 可以增加并发线程数：`--workers 20`
+
+### Q: 想只看某些股票怎么办？
+A: 使用 `--symbols` 参数指定股票列表
+
+### Q: 如何获取更多股票？
+A: 修改 `utils/dy_screener.py` 中的 `get_us_stock_list()` 函数
+
+### Q: 数据从哪里来？
+A: 使用 yfinance 从 Yahoo Finance 获取免费数据
+
+### Q: 可以用于实盘交易吗？
+A: 本工具仅供参考，不构成投资建议。实盘交易需要更多验证和风险管理。
+
+## 7. 下一步
+
+1. 分析历史回测表现
+2. 结合其他指标（如成交量、RSI 等）
+3. 添加止损止盈逻辑
+4. 集成到现有的量化系统中
+
+## 8. 与原 Pine Script 的区别
+
+| 特性 | Pine Script | Python 版本 |
+|-----|------------|-----------|
+| 股票数量 | 硬编码 40 只 | 自动获取 600+ 只 |
+| 过滤条件 | 无 | 价格和交易量过滤 |
+| 运行环境 | TradingView | 本地 Python |
+| 数据更新 | 实时 | 延迟（免费数据） |
+| 扩展性 | 受限 | 完全可定制 |
+| 批量处理 | 不支持 | 支持并发处理 |
+
+## 9. 示例工作流
 
 ```bash
-python dy_stock_screener.py --help
+# 1. 先测试
+python test_dy_screener.py
+
+# 2. 运行完整筛选
+python dy_stock_screener.py --min-price 1 --min-volume 20000000
+
+# 3. 查看结果
+cat dy_screener_results.csv | grep "True" | head -20
+
+# 4. 针对特定股票深入分析
+python dy_stock_screener.py --symbols AAPL MSFT GOOGL
 ```
 
-## 免责声明
+## 10. 技术支持
 
-本工具仅供学习和研究使用，不构成任何投资建议。股市有风险，投资需谨慎。
+详细文档请参考：[DY_SCREENER_README.md](DY_SCREENER_README.md)

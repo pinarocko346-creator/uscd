@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DY 指标美股选股器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .control-panel {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .control-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .control-group input,
+        .control-group select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .control-group input:focus,
+        .control-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .progress-panel {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: none;
+        }
+
+        .progress-panel.active {
+            display: block;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 30px;
+            background: #f0f0f0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .progress-info {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .results-panel {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .filter-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .filter-section {
+            margin-bottom: 25px;
+        }
+
+        .filter-section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-tab {
+            padding: 10px 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .filter-tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: #667eea;
+        }
+
+        .filter-tab:hover:not(.active) {
+            border-color: #667eea;
+            background: #f8f9fa;
+        }
+
+        .filter-tab.strategy {
+            border-width: 2px;
+            font-weight: 600;
+        }
+
+        .filter-tab.strategy.aggressive {
+            border-color: #ff6b6b;
+        }
+
+        .filter-tab.strategy.aggressive.active {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            border-color: #ff6b6b;
+        }
+
+        .filter-tab.strategy.stable {
+            border-color: #51cf66;
+        }
+
+        .filter-tab.strategy.stable.active {
+            background: linear-gradient(135deg, #51cf66 0%, #37b24d 100%);
+            border-color: #51cf66;
+        }
+
+        .filter-tab.strategy.strongest {
+            border-color: #ffd43b;
+        }
+
+        .filter-tab.strategy.strongest.active {
+            background: linear-gradient(135deg, #ffd43b 0%, #fab005 100%);
+            border-color: #ffd43b;
+            color: #333;
+        }
+
+        .filter-tab.strategy.risk {
+            border-color: #ff8787;
+        }
+
+        .filter-tab.strategy.risk.active {
+            background: linear-gradient(135deg, #ff8787 0%, #fa5252 100%);
+            border-color: #ff8787;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .results-table th,
+        .results-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .results-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+            position: sticky;
+            top: 0;
+        }
+
+        .results-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .signal-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin: 2px;
+        }
+
+        .signal-buy {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .signal-sell {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .signal-up {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .signal-down {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .control-row {
+                flex-direction: column;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+
+            .results-table {
+                font-size: 12px;
+            }
+
+            .results-table th,
+            .results-table td {
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 头部 -->
+        <div class="header">
+            <h1>🎯 DY 指标美股选股器</h1>
+            <p>基于蓝黄带趋势和 MACD 背离的智能选股系统</p>
+        </div>
+
+        <!-- 控制面板 -->
+        <div class="control-panel">
+            <h3 style="margin-bottom: 20px; color: #333;">筛选参数</h3>
+            <div class="control-row">
+                <div class="control-group">
+                    <label>最低股价 (USD)</label>
+                    <input type="number" id="minPrice" value="0.1" step="0.1" min="0">
+                </div>
+                <div class="control-group">
+                    <label>最低交易额 (USD)</label>
+                    <input type="number" id="minVolume" value="10000000" step="1000000" min="0">
+                </div>
+                <div class="control-group">
+                    <label>并发线程数</label>
+                    <input type="number" id="maxWorkers" value="10" min="1" max="50">
+                </div>
+                <div class="control-group">
+                    <label>股票来源</label>
+                    <select id="stockSource">
+                        <option value="auto">自动获取 (S&P 500 + NASDAQ 100)</option>
+                        <option value="custom">自定义股票列表</option>
+                    </select>
+                </div>
+            </div>
+            <div class="control-row" id="customSymbolsRow" style="display: none;">
+                <div class="control-group">
+                    <label>股票代码 (用逗号分隔)</label>
+                    <input type="text" id="customSymbols" placeholder="例如: AAPL, MSFT, GOOGL, TSLA">
+                </div>
+            </div>
+            <div class="button-group">
+                <button class="btn btn-primary" id="startBtn" onclick="startScreening()">
+                    🚀 开始筛选
+                </button>
+                <button class="btn btn-secondary" id="exportBtn" onclick="exportCSV()" disabled>
+                    📥 导出 CSV
+                </button>
+            </div>
+        </div>
+
+        <!-- 进度面板 -->
+        <div class="progress-panel" id="progressPanel">
+            <h3 style="margin-bottom: 15px; color: #333;">筛选进度</h3>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar">0%</div>
+            </div>
+            <div class="progress-info" id="progressInfo">准备开始...</div>
+        </div>
+
+        <!-- 结果面板 -->
+        <div class="results-panel">
+            <h3 style="margin-bottom: 20px; color: #333;">筛选结果</h3>
+
+            <!-- 统计卡片 -->
+            <div class="stats-grid" id="statsGrid" style="display: none;">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalCount">0</div>
+                    <div class="stat-label">总股票数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="buyCount">0</div>
+                    <div class="stat-label">买入信号</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="sellCount">0</div>
+                    <div class="stat-label">卖出信号</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="upCount">0</div>
+                    <div class="stat-label">上涨趋势</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="downCount">0</div>
+                    <div class="stat-label">下跌趋势</div>
+                </div>
+            </div>
+
+            <!-- 策略筛选 -->
+            <div class="filter-section" id="strategyFilters" style="display: none;">
+                <div class="filter-section-title">💡 推荐策略</div>
+                <div class="filter-tabs">
+                    <div class="filter-tab strategy aggressive" data-filter="aggressive">
+                        🔥 激进策略
+                        <div style="font-size: 11px; opacity: 0.8; margin-top: 2px;">买入信号</div>
+                    </div>
+                    <div class="filter-tab strategy stable" data-filter="stable">
+                        ✅ 稳健策略
+                        <div style="font-size: 11px; opacity: 0.8; margin-top: 2px;">买入 + UP1</div>
+                    </div>
+                    <div class="filter-tab strategy strongest" data-filter="strongest">
+                        ⭐ 最强策略
+                        <div style="font-size: 11px; opacity: 0.8; margin-top: 2px;">买入 + UP3</div>
+                    </div>
+                    <div class="filter-tab strategy risk" data-filter="risk_alert">
+                        ⚠️ 风险警示
+                        <div style="font-size: 11px; opacity: 0.8; margin-top: 2px;">卖出信号</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 组合筛选 -->
+            <div class="filter-section" id="combinedFilters" style="display: none;">
+                <div class="filter-section-title">🎯 组合筛选</div>
+                <div class="filter-tabs">
+                    <div class="filter-tab" data-filter="buy_any_up">
+                        买入 + 任意上涨
+                    </div>
+                    <div class="filter-tab" data-filter="buy_up1">
+                        买入 + UP1
+                    </div>
+                    <div class="filter-tab" data-filter="buy_up2">
+                        买入 + UP2
+                    </div>
+                    <div class="filter-tab" data-filter="buy_up3">
+                        买入 + UP3
+                    </div>
+                    <div class="filter-tab" data-filter="sell_down">
+                        卖出 + 下跌
+                    </div>
+                    <div class="filter-tab" data-filter="strong_up">
+                        强势上涨 (UP2+UP3)
+                    </div>
+                    <div class="filter-tab" data-filter="weak_down">
+                        弱势下跌 (DN2+DN3)
+                    </div>
+                </div>
+            </div>
+
+            <!-- 基础筛选标签 -->
+            <div class="filter-section" id="basicFilters" style="display: none;">
+                <div class="filter-section-title">📊 基础筛选</div>
+                <div class="filter-tabs">
+                    <div class="filter-tab active" data-filter="all">全部</div>
+                    <div class="filter-tab" data-filter="buy">🟢 买入信号</div>
+                    <div class="filter-tab" data-filter="sell">🔴 卖出信号</div>
+                    <div class="filter-tab" data-filter="up">📈 上涨趋势</div>
+                    <div class="filter-tab" data-filter="down">📉 下跌趋势</div>
+                </div>
+            </div>
+
+            <!-- 结果表格 -->
+            <div id="resultsContainer">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📊</div>
+                    <h3>暂无数据</h3>
+                    <p>点击"开始筛选"按钮开始分析股票</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentFilter = 'all';
+        let allResults = [];
+
+        // 股票来源切换
+        document.getElementById('stockSource').addEventListener('change', function() {
+            const customRow = document.getElementById('customSymbolsRow');
+            customRow.style.display = this.value === 'custom' ? 'block' : 'none';
+        });
+
+        // 开始筛选
+        async function startScreening() {
+            const minPrice = parseFloat(document.getElementById('minPrice').value);
+            const minVolume = parseFloat(document.getElementById('minVolume').value);
+            const maxWorkers = parseInt(document.getElementById('maxWorkers').value);
+            const stockSource = document.getElementById('stockSource').value;
+
+            let symbols = [];
+            if (stockSource === 'custom') {
+                const customSymbols = document.getElementById('customSymbols').value;
+                symbols = customSymbols.split(',').map(s => s.trim()).filter(s => s);
+                if (symbols.length === 0) {
+                    alert('请输入股票代码');
+                    return;
+                }
+            }
+
+            // 禁用按钮
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('exportBtn').disabled = true;
+
+            // 显示进度面板
+            document.getElementById('progressPanel').classList.add('active');
+
+            try {
+                // 启动筛选
+                const response = await fetch('/api/start_screening', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        symbols: symbols,
+                        min_price: minPrice,
+                        min_volume: minVolume,
+                        max_workers: maxWorkers
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // 开始监听进度
+                    listenProgress();
+                } else {
+                    alert('启动失败: ' + data.error);
+                    document.getElementById('startBtn').disabled = false;
+                }
+            } catch (error) {
+                alert('启动失败: ' + error.message);
+                document.getElementById('startBtn').disabled = false;
+            }
+        }
+
+        // 监听进度
+        function listenProgress() {
+            const eventSource = new EventSource('/api/progress_stream');
+
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+
+                if (data.type === 'heartbeat') {
+                    return;
+                }
+
+                // 更新进度条
+                const percentage = data.percentage || 0;
+                const progressBar = document.getElementById('progressBar');
+                progressBar.style.width = percentage + '%';
+                progressBar.textContent = percentage + '%';
+
+                // 更新进度信息
+                document.getElementById('progressInfo').textContent = data.message;
+
+                // 如果完成，关闭连接并加载结果
+                if (data.step === '完成' || data.step === '错误') {
+                    eventSource.close();
+                    setTimeout(() => {
+                        loadResults();
+                        document.getElementById('startBtn').disabled = false;
+                        document.getElementById('exportBtn').disabled = false;
+                    }, 1000);
+                }
+            };
+
+            eventSource.onerror = function() {
+                eventSource.close();
+                document.getElementById('startBtn').disabled = false;
+            };
+        }
+
+        // 加载结果
+        async function loadResults() {
+            try {
+                const response = await fetch('/api/results?filter=' + currentFilter);
+                const data = await response.json();
+
+                if (data.success) {
+                    allResults = data.results;
+                    displayResults(data.results);
+                    updateStats(allResults);
+                }
+            } catch (error) {
+                console.error('加载结果失败:', error);
+            }
+        }
+
+        // 显示结果
+        function displayResults(results) {
+            const container = document.getElementById('resultsContainer');
+
+            if (results.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔍</div>
+                        <h3>未找到符合条件的股票</h3>
+                        <p>尝试调整筛选参数或选择其他筛选条件</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // 显示筛选标签
+            document.getElementById('strategyFilters').style.display = 'block';
+            document.getElementById('combinedFilters').style.display = 'block';
+            document.getElementById('basicFilters').style.display = 'block';
+            document.getElementById('statsGrid').style.display = 'grid';
+
+            let html = '<table class="results-table">';
+            html += '<thead><tr>';
+            html += '<th>股票代码</th>';
+            html += '<th>价格</th>';
+            html += '<th>信号</th>';
+            html += '<th>趋势</th>';
+            html += '</tr></thead>';
+            html += '<tbody>';
+
+            results.forEach(result => {
+                html += '<tr>';
+                html += `<td><strong>${result.symbol}</strong></td>`;
+                html += `<td>$${result.price.toFixed(2)}</td>`;
+
+                // 信号
+                html += '<td>';
+                if (result.buy) {
+                    html += '<span class="signal-badge signal-buy">🟢 BUY</span>';
+                }
+                if (result.sell) {
+                    html += '<span class="signal-badge signal-sell">🔴 SELL</span>';
+                }
+                if (!result.buy && !result.sell) {
+                    html += '<span style="color: #999;">-</span>';
+                }
+                html += '</td>';
+
+                // 趋势
+                html += '<td>';
+                const trends = [];
+                if (result.up1) trends.push('<span class="signal-badge signal-up">UP1</span>');
+                if (result.up2) trends.push('<span class="signal-badge signal-up">UP2</span>');
+                if (result.up3) trends.push('<span class="signal-badge signal-up">UP3</span>');
+                if (result.down1) trends.push('<span class="signal-badge signal-down">DN1</span>');
+                if (result.down2) trends.push('<span class="signal-badge signal-down">DN2</span>');
+                if (result.down3) trends.push('<span class="signal-badge signal-down">DN3</span>');
+                html += trends.length > 0 ? trends.join(' ') : '<span style="color: #999;">-</span>';
+                html += '</td>';
+
+                html += '</tr>';
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        // 更新统计
+        function updateStats(results) {
+            document.getElementById('totalCount').textContent = results.length;
+            document.getElementById('buyCount').textContent = results.filter(r => r.buy).length;
+            document.getElementById('sellCount').textContent = results.filter(r => r.sell).length;
+            document.getElementById('upCount').textContent = results.filter(r => r.up1 || r.up2 || r.up3).length;
+            document.getElementById('downCount').textContent = results.filter(r => r.down1 || r.down2 || r.down3).length;
+
+            // 更新策略标签上的数量提示
+            updateFilterCounts(results);
+        }
+
+        // 更新筛选标签上的数量
+        function updateFilterCounts(results) {
+            const counts = {
+                'aggressive': results.filter(r => r.buy).length,
+                'stable': results.filter(r => r.buy && r.up1).length,
+                'strongest': results.filter(r => r.buy && r.up3).length,
+                'risk_alert': results.filter(r => r.sell).length,
+                'buy_any_up': results.filter(r => r.buy && (r.up1 || r.up2 || r.up3)).length,
+                'buy_up1': results.filter(r => r.buy && r.up1).length,
+                'buy_up2': results.filter(r => r.buy && r.up2).length,
+                'buy_up3': results.filter(r => r.buy && r.up3).length,
+                'sell_down': results.filter(r => r.sell && (r.down1 || r.down2 || r.down3)).length,
+                'strong_up': results.filter(r => r.up2 && r.up3).length,
+                'weak_down': results.filter(r => r.down2 && r.down3).length
+            };
+
+            // 更新每个标签
+            document.querySelectorAll('.filter-tab[data-filter]').forEach(tab => {
+                const filter = tab.dataset.filter;
+                if (counts[filter] !== undefined) {
+                    // 移除旧的计数
+                    const oldCount = tab.querySelector('.filter-count');
+                    if (oldCount) oldCount.remove();
+
+                    // 添加新的计数
+                    if (counts[filter] > 0) {
+                        const countSpan = document.createElement('span');
+                        countSpan.className = 'filter-count';
+                        countSpan.textContent = ` (${counts[filter]})`;
+                        countSpan.style.opacity = '0.7';
+                        countSpan.style.fontSize = '12px';
+                        tab.appendChild(countSpan);
+                    }
+                }
+            });
+        }
+
+        // 筛选标签点击
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.filter-tab')) {
+                const tab = e.target.closest('.filter-tab');
+
+                // 更新激活状态 - 只在同一个 section 内切换
+                const section = tab.closest('.filter-section');
+                if (section) {
+                    section.querySelectorAll('.filter-tab').forEach(t => {
+                        t.classList.remove('active');
+                    });
+                } else {
+                    // 如果不在 section 内，清除所有 active
+                    document.querySelectorAll('.filter-tab').forEach(t => {
+                        t.classList.remove('active');
+                    });
+                }
+
+                tab.classList.add('active');
+
+                // 更新筛选
+                currentFilter = tab.dataset.filter;
+                loadResults();
+            }
+        });
+
+        // 导出 CSV
+        function exportCSV() {
+            window.location.href = '/api/export_csv';
+        }
+    </script>
+</body>
+</html>

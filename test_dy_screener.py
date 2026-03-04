@@ -1,81 +1,89 @@
 #!/usr/bin/env python3
 """
-DY策略选股器 - 快速测试脚本
-测试前10只股票，快速验证功能
+DY 选股器测试脚本
+使用少量股票快速测试功能
 """
 
 from utils.dy_screener import DYScreener
-import time
 
+# 测试股票列表（包含不同市值和流动性的股票）
+test_symbols = [
+    # 大盘股
+    'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA',
+    # 中盘股
+    'COIN', 'MARA', 'RIOT', 'HOOD', 'SOFI', 'RBLX',
+    # 小盘股
+    'IREN', 'CLSK', 'CIFR', 'RGTI', 'QUBT',
+    # ETF
+    'SPY', 'QQQ', 'UVXY'
+]
 
-def main():
-    print("=" * 60)
-    print("DY策略选股器 - 快速测试")
-    print("=" * 60)
-    
-    screener = DYScreener()
-    
-    # 测试股票列表
-    test_symbols = [
-        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA',
-        'META', 'TSLA', 'AMD', 'NFLX', 'INTC'
-    ]
-    
-    print(f"\n测试 {len(test_symbols)} 只股票...")
-    print("-" * 60)
-    
-    qualified = []
-    start_time = time.time()
-    
-    for i, symbol in enumerate(test_symbols, 1):
-        print(f"\n[{i}/{len(test_symbols)}] 正在分析 {symbol}...")
-        
-        ok, info = screener.screen_stock(symbol)
-        
-        if ok:
-            qualified.append(info)
-            signals = []
-            if info['buy']: signals.append('BUY')
-            if info['sell']: signals.append('SELL')
-            if info['up1']: signals.append('UP1')
-            if info['up2']: signals.append('UP2')
-            if info['up3']: signals.append('UP3')
-            if info['down1']: signals.append('DOWN1')
-            if info['down2']: signals.append('DOWN2')
-            if info['down3']: signals.append('DOWN3')
-            
-            print(f"  ✓ 有信号: {', '.join(signals)}")
-            print(f"  价格: ${info['price']:.2f}")
-            print(f"  成交额: ${info['volume_usd']:.2f}M")
-            print(f"  DIFF: {info['diff']:.4f}, DEA: {info['dea']:.4f}")
-        else:
-            print(f"  ✗ 无信号或不符合条件")
-    
-    elapsed = time.time() - start_time
-    
+print("=" * 60)
+print("DY 选股器测试")
+print("=" * 60)
+print(f"测试股票数量: {len(test_symbols)}")
+print(f"测试股票列表: {', '.join(test_symbols)}")
+print("=" * 60)
+
+# 创建选股器（使用较低的过滤条件以便测试）
+screener = DYScreener(
+    min_price=0.1,
+    min_volume_usd=1_000_000  # 降低到 100 万以便测试更多股票
+)
+
+# 筛选股票
+results = screener.screen_stocks(test_symbols, max_workers=5)
+
+# 显示结果
+if not results.empty:
     print("\n" + "=" * 60)
-    print(f"测试完成！")
-    print(f"入选: {len(qualified)}/{len(test_symbols)} 只")
-    print(f"耗时: {elapsed:.2f} 秒")
+    print("测试结果")
     print("=" * 60)
-    
-    if qualified:
-        print("\n入选股票：")
-        for stock in qualified:
-            signals = []
-            if stock['buy']: signals.append('BUY')
-            if stock['sell']: signals.append('SELL')
-            if stock['up1']: signals.append('UP1')
-            if stock['up2']: signals.append('UP2')
-            if stock['up3']: signals.append('UP3')
-            if stock['down1']: signals.append('DOWN1')
-            if stock['down2']: signals.append('DOWN2')
-            if stock['down3']: signals.append('DOWN3')
-            print(f"  {stock['symbol']}: {', '.join(signals)}")
-    
-    print("\n✓ 测试通过！可以运行完整版：")
-    print("  python dy_stock_screener.py")
+    print(f"成功分析 {len(results)} 只股票\n")
 
+    # 显示所有结果
+    print("所有股票信号:")
+    print("-" * 60)
+    for _, row in results.iterrows():
+        signals = []
+        if row['buy']:
+            signals.append('🟢BUY')
+        if row['sell']:
+            signals.append('🔴SELL')
+        if row['up1']:
+            signals.append('UP1')
+        if row['up2']:
+            signals.append('UP2')
+        if row['up3']:
+            signals.append('UP3')
+        if row['down1']:
+            signals.append('DN1')
+        if row['down2']:
+            signals.append('DN2')
+        if row['down3']:
+            signals.append('DN3')
 
-if __name__ == "__main__":
-    main()
+        signal_str = ', '.join(signals) if signals else '-'
+        print(f"{row['symbol']:8s} ${row['price']:8.2f}  {signal_str}")
+
+    # 统计
+    print(f"\n📊 信号统计:")
+    print("-" * 60)
+    print(f"买入信号:  {results['buy'].sum()} 只")
+    print(f"卖出信号:  {results['sell'].sum()} 只")
+    print(f"UP1:       {results['up1'].sum()} 只")
+    print(f"UP2:       {results['up2'].sum()} 只")
+    print(f"UP3:       {results['up3'].sum()} 只")
+    print(f"DOWN1:     {results['down1'].sum()} 只")
+    print(f"DOWN2:     {results['down2'].sum()} 只")
+    print(f"DOWN3:     {results['down3'].sum()} 只")
+
+    # 保存测试结果
+    results.to_csv('test_results.csv', index=False)
+    print(f"\n✅ 测试结果已保存到: test_results.csv")
+    print("=" * 60)
+else:
+    print("\n❌ 测试失败：未能分析任何股票")
+
+print("\n测试完成！如果结果正常，可以运行完整版本：")
+print("python dy_stock_screener.py")
