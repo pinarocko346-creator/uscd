@@ -109,46 +109,74 @@ def main():
     print(f"\n完整结果已保存: {output_file}")
     print(f"共 {len(qualified_stocks)} 只股票有信号")
     
-    # 按策略等级分类输出
+    # 按"机会"和"风险"分类输出
     print("\n" + "="*80)
+    print("📊 选股简报")
+    print("="*80)
     
-    # 策略1: 激进策略 - 只看买入信号
+    # ========== 机会信号（买入相关）==========
+    print("\n🟢 【机会信号】")
+    print("-" * 80)
+    
+    # 激进策略：只看买入信号
     aggressive = df[df['buy'] == True]
-    print(f"\n【激进策略】买入信号: {len(aggressive)} 只")
+    print(f"\n  💰 激进策略（买入信号）: {len(aggressive)} 只")
     if len(aggressive) > 0:
         print(aggressive[['symbol', 'price', 'volume_usd', 'diff', 'dea']].to_string(index=False))
-        aggressive.to_csv(f"dy_aggressive_{ts}.csv", index=False, encoding='utf-8-sig')
-        print(f"  → 已保存: dy_aggressive_{ts}.csv")
+        aggressive.to_csv(f"opportunity_aggressive_{ts}.csv", index=False, encoding='utf-8-sig')
+        print(f"     → 已保存: opportunity_aggressive_{ts}.csv")
+    else:
+        print("     暂无符合条件的股票")
     
-    # 策略2: 稳健策略 - 买入信号 + 上涨趋势(UP1)
+    # 稳健策略：买入信号 + 上涨趋势(UP1)
     stable = df[(df['buy'] == True) & (df['up1'] == True)]
-    print(f"\n【稳健策略】买入信号 + UP1: {len(stable)} 只")
+    print(f"\n  📈 稳健策略（买入 + UP1）: {len(stable)} 只")
     if len(stable) > 0:
         print(stable[['symbol', 'price', 'volume_usd', 'diff', 'dea']].to_string(index=False))
-        stable.to_csv(f"dy_stable_{ts}.csv", index=False, encoding='utf-8-sig')
-        print(f"  → 已保存: dy_stable_{ts}.csv")
+        stable.to_csv(f"opportunity_stable_{ts}.csv", index=False, encoding='utf-8-sig')
+        print(f"     → 已保存: opportunity_stable_{ts}.csv")
+    else:
+        print("     暂无符合条件的股票")
     
-    # 策略3: 最强策略 - 买入信号 + 强势突破(UP3)
+    # 最强策略：买入信号 + 强势突破(UP3)
     strongest = df[(df['buy'] == True) & (df['up3'] == True)]
-    print(f"\n【最强策略】买入信号 + UP3: {len(strongest)} 只")
+    print(f"\n  🚀 最强策略（买入 + UP3）: {len(strongest)} 只")
     if len(strongest) > 0:
         print(strongest[['symbol', 'price', 'volume_usd', 'diff', 'dea']].to_string(index=False))
-        strongest.to_csv(f"dy_strongest_{ts}.csv", index=False, encoding='utf-8-sig')
-        print(f"  → 已保存: dy_strongest_{ts}.csv")
+        strongest.to_csv(f"opportunity_strongest_{ts}.csv", index=False, encoding='utf-8-sig')
+        print(f"     → 已保存: opportunity_strongest_{ts}.csv")
+    else:
+        print("     暂无符合条件的股票")
     
-    # 策略4: 风险控制 - 卖出信号（持仓警示）
-    risk = df[df['sell'] == True]
-    print(f"\n【风险控制】卖出信号（持仓警示）: {len(risk)} 只")
-    if len(risk) > 0:
-        print(risk[['symbol', 'price', 'volume_usd', 'diff', 'dea']].to_string(index=False))
-        risk.to_csv(f"dy_risk_{ts}.csv", index=False, encoding='utf-8-sig')
-        print(f"  → 已保存: dy_risk_{ts}.csv")
+    # ========== 风险信号（卖出+下跌相关）==========
+    print("\n\n🔴 【风险信号】")
+    print("-" * 80)
     
-    # 其他趋势信号（仅供参考）
-    other = df[(df['buy'] == False) & (df['sell'] == False)]
-    if len(other) > 0:
-        print(f"\n【其他趋势信号】（仅供参考）: {len(other)} 只")
-        print("（包含UP1/UP2/UP3/DOWN1/DOWN2/DOWN3信号，但无买卖确认）")
+    # 卖出信号（持仓警示）
+    sell_signal = df[df['sell'] == True]
+    print(f"\n  ⚠️  卖出信号（持仓警示）: {len(sell_signal)} 只")
+    if len(sell_signal) > 0:
+        print(sell_signal[['symbol', 'price', 'volume_usd', 'diff', 'dea']].to_string(index=False))
+        sell_signal.to_csv(f"risk_sell_{ts}.csv", index=False, encoding='utf-8-sig')
+        print(f"     → 已保存: risk_sell_{ts}.csv")
+    else:
+        print("     暂无卖出信号")
+    
+    # 下跌信号（DOWN1/DOWN2/DOWN3）
+    down_signal = df[(df['down1'] == True) | (df['down2'] == True) | (df['down3'] == True)]
+    print(f"\n  📉 下跌信号（DOWN1/2/3）: {len(down_signal)} 只")
+    if len(down_signal) > 0:
+        # 显示前10只
+        display_df = down_signal[['symbol', 'price', 'volume_usd', 'down1', 'down2', 'down3']].head(10)
+        print(display_df.to_string(index=False))
+        if len(down_signal) > 10:
+            print(f"     ... 还有 {len(down_signal) - 10} 只（已省略）")
+        down_signal.to_csv(f"risk_down_{ts}.csv", index=False, encoding='utf-8-sig')
+        print(f"     → 已保存: risk_down_{ts}.csv")
+    else:
+        print("     暂无下跌信号")
+    
+    print("\n" + "="*80)
 
 
 if __name__ == "__main__":
