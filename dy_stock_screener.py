@@ -98,7 +98,7 @@ def main():
         print("当前无符合条件的股票。")
         return
     
-    # 保存结果
+    # 保存完整结果
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
     output_file = args.output if args.output else f"dy_qualified_{ts}.csv"
     
@@ -106,24 +106,49 @@ def main():
     df = df.sort_values('volume_usd', ascending=False)
     df.to_csv(output_file, index=False, encoding='utf-8-sig')
     
-    print(f"\n结果已保存: {output_file}")
-    print(f"共 {len(qualified_stocks)} 只股票入选")
+    print(f"\n完整结果已保存: {output_file}")
+    print(f"共 {len(qualified_stocks)} 只股票有信号")
     
-    # 统计信号
-    buy_count = df['buy'].sum()
-    sell_count = df['sell'].sum()
-    up_count = (df['up1'] | df['up2'] | df['up3']).sum()
-    down_count = (df['down1'] | df['down2'] | df['down3']).sum()
+    # 按策略等级分类输出
+    print("\n" + "="*80)
     
-    print(f"\n信号统计：")
-    if buy_count > 0:
-        print(f"  BUY信号: {buy_count} 只")
-    if sell_count > 0:
-        print(f"  SELL信号: {sell_count} 只")
-    if up_count > 0:
-        print(f"  上涨趋势: {up_count} 只")
-    if down_count > 0:
-        print(f"  下跌趋势: {down_count} 只")
+    # 策略1: 激进策略 - 只看买入信号
+    aggressive = df[df['buy'] == True]
+    print(f"\n【激进策略】买入信号: {len(aggressive)} 只")
+    if len(aggressive) > 0:
+        print(aggressive[['symbol', 'price', 'volume_usd', 'diff', 'dea']].to_string(index=False))
+        aggressive.to_csv(f"dy_aggressive_{ts}.csv", index=False, encoding='utf-8-sig')
+        print(f"  → 已保存: dy_aggressive_{ts}.csv")
+    
+    # 策略2: 稳健策略 - 买入信号 + 上涨趋势(UP1)
+    stable = df[(df['buy'] == True) & (df['up1'] == True)]
+    print(f"\n【稳健策略】买入信号 + UP1: {len(stable)} 只")
+    if len(stable) > 0:
+        print(stable[['symbol', 'price', 'volume_usd', 'diff', 'dea']].to_string(index=False))
+        stable.to_csv(f"dy_stable_{ts}.csv", index=False, encoding='utf-8-sig')
+        print(f"  → 已保存: dy_stable_{ts}.csv")
+    
+    # 策略3: 最强策略 - 买入信号 + 强势突破(UP3)
+    strongest = df[(df['buy'] == True) & (df['up3'] == True)]
+    print(f"\n【最强策略】买入信号 + UP3: {len(strongest)} 只")
+    if len(strongest) > 0:
+        print(strongest[['symbol', 'price', 'volume_usd', 'diff', 'dea']].to_string(index=False))
+        strongest.to_csv(f"dy_strongest_{ts}.csv", index=False, encoding='utf-8-sig')
+        print(f"  → 已保存: dy_strongest_{ts}.csv")
+    
+    # 策略4: 风险控制 - 卖出信号（持仓警示）
+    risk = df[df['sell'] == True]
+    print(f"\n【风险控制】卖出信号（持仓警示）: {len(risk)} 只")
+    if len(risk) > 0:
+        print(risk[['symbol', 'price', 'volume_usd', 'diff', 'dea']].to_string(index=False))
+        risk.to_csv(f"dy_risk_{ts}.csv", index=False, encoding='utf-8-sig')
+        print(f"  → 已保存: dy_risk_{ts}.csv")
+    
+    # 其他趋势信号（仅供参考）
+    other = df[(df['buy'] == False) & (df['sell'] == False)]
+    if len(other) > 0:
+        print(f"\n【其他趋势信号】（仅供参考）: {len(other)} 只")
+        print("（包含UP1/UP2/UP3/DOWN1/DOWN2/DOWN3信号，但无买卖确认）")
 
 
 if __name__ == "__main__":
