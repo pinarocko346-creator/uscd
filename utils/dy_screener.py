@@ -61,56 +61,132 @@ class DYScreener:
         return result
 
     def calculate_divergence_signals(self, df: pd.DataFrame) -> pd.DataFrame:
-        """计算背离信号"""
-        # 计算 N1 和 MM1
-        df['N1'] = self.bars_since((df['MACD'].shift(1) >= 0) & (df['MACD'] < 0))
-        df['MM1'] = self.bars_since((df['MACD'].shift(1) <= 0) & (df['MACD'] > 0))
-
-        # 填充无效值
-        df['valid_N1'] = df['N1'].fillna(1).astype(int)
-        df['valid_MM1'] = df['MM1'].fillna(1).astype(int)
-
+        """计算背离信号 - 根据富途MRMC指标"""
+        n = len(df)
+        
+        # 初始化列
+        df['N1'] = 0  # 上次MACD<0以来的bar数
+        df['MM1'] = 0  # 上次MACD>0以来的bar数
+        
+        # 计算N1和MM1 (BARSLAST)
+        last_macd_neg = -1
+        last_macd_pos = -1
+        for i in range(n):
+            if i > 0 and df['MACD'].iloc[i-1] >= 0 and df['MACD'].iloc[i] < 0:
+                last_macd_neg = i
+            if i > 0 and df['MACD'].iloc[i-1] <= 0 and df['MACD'].iloc[i] > 0:
+                last_macd_pos = i
+            df.loc[df.index[i], 'N1'] = i - last_macd_neg if last_macd_neg >= 0 else i
+            df.loc[df.index[i], 'MM1'] = i - last_macd_pos if last_macd_pos >= 0 else i
+        
+        # 转换为整数
+        df['N1'] = df['N1'].astype(int)
+        df['MM1'] = df['MM1'].astype(int)
+        
         # 计算底背离相关指标
-        df['CC1'] = df['Close'].rolling(window=1).apply(
-            lambda x: df['Close'].iloc[max(0, len(df) - int(df['valid_N1'].iloc[-1]) - 1):].min()
-            if len(df) > 0 else np.nan, raw=False
-        )
-
-        df['DIFL1'] = df['DIFF'].rolling(window=1).apply(
-            lambda x: df['DIFF'].iloc[max(0, len(df) - int(df['valid_N1'].iloc[-1]) - 1):].min()
-            if len(df) > 0 else np.nan, raw=False
-        )
-
-        # 简化的背离判断
-        df['AAA'] = (
-            (df['CC1'] < df['CC1'].shift(int(df['valid_MM1'].iloc[-1]) + 1)) &
-            (df['DIFL1'] > df['DIFL1'].shift(int(df['valid_MM1'].iloc[-1]) + 1)) &
-            (df['MACD'].shift(1) < 0) & (df['DIFF'] < 0)
-        )
-
-        df['CCC'] = df['AAA'] & (df['DIFF'] < 0)
-        df['LLL'] = (~df['CCC'].shift(1).fillna(False)) & df['CCC']
-
+        df['CC1'] = 0.0  # N1+1周期内的最低价(LLV)
+        df['CC2'] = 0.0  # 往前推MM1+1的CC1
+        df['CC3'] = 0.0  # 往前推MM1+1的CC2
+        df['DIFL1'] = 0.0  # N1+1周期内的DIFF最低值
+        df['DIFL2'] = 0.0  # 往前推MM1+1的DIFL1
+        df['DIFL3'] = 0.0  # 往前推MM1+1的DIFL2
+        
+        for i in range(n):
+            n1_val = int(df['N1'].iloc[i]) + 1
+            mm1_val = int(df['MM1'].iloc[i]) + 1
+            
+            # CC1 = LLV(CLOSE, N1+1)
+            start_idx = max(0, i - n1_val + 1)
+            df.loc[df.index[i], 'CC1'] = df['Close'].iloc[start_idx:i+1].min()
+            
+            # DIFL1 = LLV(DIFF, N1+1)
+            df.loc[df.index[i], 'DIFL1'] = df['DIFF'].iloc[start_idx:i+1].min()
+            
+            # CC2 = REF(CC1, MM1+1)
+            if i >= mm1_val:
+                df.loc[df.index[i], 'CC2'] = df['CC1'].iloc[i - mm1_val]
+                df.loc[df.index[i], 'DIFL2'] = df['DIFL1'].iloc[i - mm1_val]
+            
+            # CC3 = REF(CC2, MM1+1)
+            if i >= 2 * mm1_val:
+                df.loc[df.index[i], 'CC3'] = df['CC2'].iloc[i - mm1_val]
+                df.loc[df.index[i], 'DIFL3'] = df['DIFL2'].iloc[i - mm1_val]
+        
         # 计算顶背离相关指标
-        df['CH1'] = df['Close'].rolling(window=1).apply(
-            lambda x: df['Close'].iloc[max(0, len(df) - int(df['valid_MM1'].iloc[-1]) - 1):].max()
-            if len(df) > 0 else np.nan, raw=False
-        )
-
-        df['DIFH1'] = df['DIFF'].rolling(window=1).apply(
-            lambda x: df['DIFF'].iloc[max(0, len(df) - int(df['valid_MM1'].iloc[-1]) - 1):].max()
-            if len(df) > 0 else np.nan, raw=False
-        )
-
-        df['ZJDBL'] = (
-            (df['CH1'] > df['CH1'].shift(int(df['valid_N1'].iloc[-1]) + 1)) &
-            (df['DIFH1'] < df['DIFH1'].shift(int(df['valid_N1'].iloc[-1]) + 1)) &
-            (df['MACD'].shift(1) > 0) & (df['DIFF'] > 0)
-        )
-
-        df['DBBL'] = df['ZJDBL'] & (df['DIFF'] > 0)
+        df['CH1'] = 0.0  # MM1+1周期内的最高价(HHV)
+        df['CH2'] = 0.0  # 往前推N1+1的CH1
+        df['CH3'] = 0.0  # 往前推N1+1的CH2
+        df['DIFH1'] = 0.0  # MM1+1周期内的DIFF最高值
+        df['DIFH2'] = 0.0  # 往前推N1+1的DIFH1
+        df['DIFH3'] = 0.0  # 往前推N1+1的DIFH2
+        
+        for i in range(n):
+            n1_val = int(df['N1'].iloc[i]) + 1
+            mm1_val = int(df['MM1'].iloc[i]) + 1
+            
+            # CH1 = HHV(CLOSE, MM1+1)
+            start_idx = max(0, i - mm1_val + 1)
+            df.loc[df.index[i], 'CH1'] = df['Close'].iloc[start_idx:i+1].max()
+            
+            # DIFH1 = HHV(DIFF, MM1+1)
+            df.loc[df.index[i], 'DIFH1'] = df['DIFF'].iloc[start_idx:i+1].max()
+            
+            # CH2 = REF(CH1, N1+1)
+            if i >= n1_val:
+                df.loc[df.index[i], 'CH2'] = df['CH1'].iloc[i - n1_val]
+                df.loc[df.index[i], 'DIFH2'] = df['DIFH1'].iloc[i - n1_val]
+            
+            # CH3 = REF(CH2, N1+1)
+            if i >= 2 * n1_val:
+                df.loc[df.index[i], 'CH3'] = df['CH2'].iloc[i - n1_val]
+                df.loc[df.index[i], 'DIFH3'] = df['DIFH1'].iloc[i - n1_val]
+        
+        # 底背离条件
+        # AAA = ((CC1 < CC2) AND ((DIFL1 > DIFL2) AND ((REF(MACD,1) < 0) AND (DIFF < 0))))
+        df['AAA'] = ((df['CC1'] < df['CC2']) & 
+                     (df['DIFL1'] > df['DIFL2']) & 
+                     (df['MACD'].shift(1) < 0) & 
+                     (df['DIFF'] < 0))
+        
+        # BBB = ((CC1 < CC3) AND ((DIFL1 < DIFL2) AND ((DIFL1 > DIFL3) AND ((REF(MACD,1) < 0) AND (DIFF < 0)))))
+        df['BBB'] = ((df['CC1'] < df['CC3']) & 
+                     (df['DIFL1'] < df['DIFL2']) & 
+                     (df['DIFL1'] > df['DIFL3']) & 
+                     (df['MACD'].shift(1) < 0) & 
+                     (df['DIFF'] < 0))
+        
+        # CCC = ((AAA OR BBB) AND (DIFF < 0))
+        df['CCC'] = ((df['AAA'] | df['BBB']) & (df['DIFF'] < 0))
+        
+        # LLL = ((REF(CCC,1) = 0) AND CCC)
+        df['LLL'] = (~df['CCC'].shift(1).fillna(False)) & df['CCC']
+        
+        # JJJ = (REF(CCC,1) AND (ABS(REF(DIFF,1)) >= (ABS(DIFF) * 1.01)))
+        df['JJJ'] = df['CCC'].shift(1) & (df['DIFF'].shift(1).abs() >= (df['DIFF'].abs() * 1.01))
+        
+        # 顶背离条件
+        # ZJDBL = ((CH1 > CH2) AND ((DIFH1 < DIFH2) AND ((REF(MACD,1) > 0) AND (DIFF > 0))))
+        df['ZJDBL'] = ((df['CH1'] > df['CH2']) & 
+                       (df['DIFH1'] < df['DIFH2']) & 
+                       (df['MACD'].shift(1) > 0) & 
+                       (df['DIFF'] > 0))
+        
+        # GXDBL = ((CH1 > CH3) AND ((DIFH1 > DIFH2) AND ((DIFH1 < DIFH3) AND ((REF(MACD,1) > 0) AND (DIFF > 0)))))
+        df['GXDBL'] = ((df['CH1'] > df['CH3']) & 
+                       (df['DIFH1'] > df['DIFH2']) & 
+                       (df['DIFH1'] < df['DIFH3']) & 
+                       (df['MACD'].shift(1) > 0) & 
+                       (df['DIFF'] > 0))
+        
+        # DBBL = ((ZJDBL OR GXDBL) AND (DIFF > 0))
+        df['DBBL'] = ((df['ZJDBL'] | df['GXDBL']) & (df['DIFF'] > 0))
+        
+        # DBL = ((REF(DBBL,1) = 0) AND (DBBL AND (DIFF > DEA)))
         df['DBL'] = (~df['DBBL'].shift(1).fillna(False)) & df['DBBL'] & (df['DIFF'] > df['DEA'])
-
+        
+        # DBJG = (REF(DBBL,1) AND (REF(DIFF,1) >= (DIFF * 1.01)))
+        df['DBJG'] = df['DBBL'].shift(1) & (df['DIFF'].shift(1) >= (df['DIFF'] * 1.01))
+        
         return df
 
     def calculate_trend_signals(self, df: pd.DataFrame) -> Dict[str, bool]:
@@ -142,19 +218,60 @@ class DYScreener:
         }
 
     def calculate_buy_sell_signals(self, df: pd.DataFrame) -> Tuple[bool, bool]:
-        """计算买卖信号"""
-        if len(df) < 2:
+        """计算买卖信号 - 根据富途MRMC指标完整逻辑
+        
+        买入信号：底背离后，DIFF开始收敛（JJJ）
+        卖出信号：顶背离后，DIFF开始发散（DBJG）
+        """
+        if len(df) < 3:
             return False, False
 
-        # 简化的买卖信号逻辑
-        diff_cross_up = (df['DIFF'].iloc[-2] <= df['DEA'].iloc[-2]) and (df['DIFF'].iloc[-1] > df['DEA'].iloc[-1])
-        diff_cross_down = (df['DIFF'].iloc[-2] >= df['DEA'].iloc[-2]) and (df['DIFF'].iloc[-1] < df['DEA'].iloc[-1])
+        buy = False
+        sell = False
 
-        # 买入信号：底背离 + DIFF 上穿 DEA
-        buy = df['LLL'].iloc[-1] and diff_cross_up if 'LLL' in df.columns else False
-
-        # 卖出信号：顶背离 + DIFF 下穿 DEA
-        sell = df['DBL'].iloc[-1] and diff_cross_down if 'DBL' in df.columns else False
+        # 检查最近3天
+        for i in range(1, min(4, len(df))):
+            idx = -i
+            
+            # 买入信号：昨天JJJ=0 AND 今天JJJ=1
+            # JJJ = 昨天CCC=1 AND |昨天DIFF| >= |今天DIFF| * 1.01
+            if 'JJJ' in df.columns:
+                jjj_today = df['CCC'].iloc[idx-1] if idx-1 >= -len(df) else False
+                if jjj_today:
+                    diff_yesterday = df['DIFF'].iloc[idx-1] if idx-1 >= -len(df) else 0
+                    diff_today = df['DIFF'].iloc[idx]
+                    jjj_today = jjj_today and (abs(diff_yesterday) >= abs(diff_today) * 1.01)
+                
+                jjj_yesterday = False
+                if idx-2 >= -len(df) and 'JJJ' in df.columns:
+                    ccc_prev = df['CCC'].iloc[idx-2] if idx-2 >= -len(df) else False
+                    if ccc_prev:
+                        diff_prev2 = df['DIFF'].iloc[idx-2] if idx-2 >= -len(df) else 0
+                        diff_prev1 = df['DIFF'].iloc[idx-1] if idx-1 >= -len(df) else 0
+                        jjj_yesterday = ccc_prev and (abs(diff_prev2) >= abs(diff_prev1) * 1.01)
+                
+                if jjj_today and not jjj_yesterday:
+                    buy = True
+            
+            # 卖出信号：昨天DBJG=0 AND 今天DBJG=1
+            # DBJG = 昨天DBBL=1 AND 昨天DIFF >= 今天DIFF * 1.01
+            if 'DBJG' in df.columns:
+                dbjg_today = df['DBBL'].iloc[idx-1] if idx-1 >= -len(df) else False
+                if dbjg_today:
+                    diff_yesterday = df['DIFF'].iloc[idx-1] if idx-1 >= -len(df) else 0
+                    diff_today = df['DIFF'].iloc[idx]
+                    dbjg_today = dbjg_today and (diff_yesterday >= diff_today * 1.01)
+                
+                dbjg_yesterday = False
+                if idx-2 >= -len(df):
+                    dbbl_prev = df['DBBL'].iloc[idx-2] if idx-2 >= -len(df) else False
+                    if dbbl_prev:
+                        diff_prev2 = df['DIFF'].iloc[idx-2] if idx-2 >= -len(df) else 0
+                        diff_prev1 = df['DIFF'].iloc[idx-1] if idx-1 >= -len(df) else 0
+                        dbjg_yesterday = dbbl_prev and (diff_prev2 >= diff_prev1 * 1.01)
+                
+                if dbjg_today and not dbjg_yesterday:
+                    sell = True
 
         return buy, sell
 
@@ -192,6 +309,10 @@ class DYScreener:
             if df.empty or len(df) < 100:
                 return None
 
+            # 处理MultiIndex列（yfinance返回的数据可能有MultiIndex）
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+
             # 计算指标
             df = self.calculate_bands(df)
             df = self.calculate_macd(df)
@@ -203,10 +324,14 @@ class DYScreener:
 
             # 获取最新数据
             latest = df.iloc[-1]
+            
+            # 计算交易额
+            volume_usd = latest['Close'] * latest['Volume']
 
             return {
                 'symbol': symbol,
                 'price': latest['Close'],
+                'volume_usd': volume_usd,
                 'buy': buy,
                 'sell': sell,
                 **trend_signals
@@ -224,33 +349,31 @@ class DYScreener:
         # 第一步：过滤股票
         print("第一步：应用价格和交易量过滤...")
         filtered_symbols = []
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_symbol = {executor.submit(self.filter_stock, symbol): symbol for symbol in symbols}
-            for i, future in enumerate(as_completed(future_to_symbol), 1):
-                symbol = future_to_symbol[future]
-                try:
-                    if future.result():
-                        filtered_symbols.append(symbol)
-                    if i % 50 == 0:
-                        print(f"已过滤 {i}/{len(symbols)} 只股票，通过 {len(filtered_symbols)} 只")
-                except Exception:
-                    pass
-
+        for symbol in symbols:
+            try:
+                if self.filter_stock(symbol):
+                    filtered_symbols.append(symbol)
+            except Exception as e:
+                # 忽略错误，继续下一个
+                pass
+        
         print(f"过滤完成，剩余 {len(filtered_symbols)} 只股票")
+
+        if not filtered_symbols:
+            return pd.DataFrame()
 
         # 第二步：分析股票
         print("第二步：计算技术指标...")
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_symbol = {executor.submit(self.analyze_stock, symbol): symbol for symbol in filtered_symbols}
-            for i, future in enumerate(as_completed(future_to_symbol), 1):
-                try:
-                    result = future.result()
-                    if result:
-                        results.append(result)
-                    if i % 10 == 0:
-                        print(f"已分析 {i}/{len(filtered_symbols)} 只股票")
-                except Exception:
-                    pass
+        for i, symbol in enumerate(filtered_symbols, 1):
+            try:
+                result = self.analyze_stock(symbol)
+                if result:
+                    results.append(result)
+                if i % 10 == 0:
+                    print(f"已分析 {i}/{len(filtered_symbols)} 只股票")
+            except Exception as e:
+                # 忽略错误，继续下一个
+                pass
 
         print(f"分析完成，成功分析 {len(results)} 只股票")
 
